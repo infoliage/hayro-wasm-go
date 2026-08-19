@@ -1,0 +1,29 @@
+version: "2"
+linters:
+  enable:
+    - asciicheck
+    - bodyclose
+    - dupword
+    - errorlint
+    - predeclared
+    - staticcheck
+  exclusions:
+    # sources are excluded by strictly following the Go generated file convention.
+    generated: strict
+    # https://golangci-lint.run/docs/linters/false-positives/#exclusion-presets
+    presets:
+      - comments
+      - std-error-handling
+
+formatters:
+  enable:
+    - gofmt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/zfsguy/mach-shopify)
+  exclusions:
+    generated: strict
