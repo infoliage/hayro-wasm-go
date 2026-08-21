@@ -43,21 +43,21 @@ func (d *Document) freePDF(ctx context.Context, ptr, size uint32) error {
 	return err
 }
 
-func (d *Document) allocRenderSettings(ctx context.Context) (uint32, error) {
-	return d.call1(ctx, "alloc_render_settings")
+func (d *Document) allocRenderSettings(ctx context.Context, size uint32) (uint32, error) {
+	return d.call1(ctx, "alloc_render_settings", uint64(size))
 }
 
-func (d *Document) freeRenderSettings(ctx context.Context, ptr uint32) error {
-	_, err := d.call(ctx, "free_render_settings", uint64(ptr))
+func (d *Document) freeRenderSettings(ctx context.Context, ptr, size uint32) error {
+	_, err := d.call(ctx, "free_render_settings", uint64(ptr), uint64(size))
 	return err
 }
 
-func (d *Document) allocInterpreterSettings(ctx context.Context) (uint32, error) {
-	return d.call1(ctx, "alloc_interpreter_settings")
+func (d *Document) allocInterpreterSettings(ctx context.Context, size uint32) (uint32, error) {
+	return d.call1(ctx, "alloc_interpreter_settings", uint64(size))
 }
 
-func (d *Document) freeInterpreterSettings(ctx context.Context, ptr uint32) error {
-	_, err := d.call(ctx, "free_interpreter_settings", uint64(ptr))
+func (d *Document) freeInterpreterSettings(ctx context.Context, ptr, size uint32) error {
+	_, err := d.call(ctx, "free_interpreter_settings", uint64(ptr), uint64(size))
 	return err
 }
 

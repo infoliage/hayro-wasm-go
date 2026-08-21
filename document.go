@@ -75,30 +75,36 @@ func (d *Document) Render(ctx context.Context, pageNumber int, render *RenderSet
 		return nil, ErrPageOutOfRange
 	}
 
-	var renderPtr, interpreterPtr uint32
+	var renderPtr, renderLen, interpreterPtr, interpreterLen uint32
 	if render != nil {
-		ptr, err := d.allocRenderSettings(ctx)
+		blob, err := render.encode()
+		if err != nil {
+			return nil, fmt.Errorf("hayro: encoding render settings: %w", err)
+		}
+		ptr, err := d.allocRenderSettings(ctx, uint32(len(blob)))
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = d.freeRenderSettings(ctx, ptr) }()
-		blob := render.encode()
-		if !d.mod.Memory().Write(ptr, blob[:]) {
+		defer func() { _ = d.freeRenderSettings(ctx, ptr, uint32(len(blob))) }()
+		if !d.mod.Memory().Write(ptr, blob) {
 			return nil, fmt.Errorf("hayro: writing render settings into wasm memory")
 		}
-		renderPtr = ptr
+		renderPtr, renderLen = ptr, uint32(len(blob))
 	}
 	if interpreter != nil {
-		ptr, err := d.allocInterpreterSettings(ctx)
+		blob, err := interpreter.encode()
+		if err != nil {
+			return nil, fmt.Errorf("hayro: encoding interpreter settings: %w", err)
+		}
+		ptr, err := d.allocInterpreterSettings(ctx, uint32(len(blob)))
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = d.freeInterpreterSettings(ctx, ptr) }()
-		blob := interpreter.encode()
-		if !d.mod.Memory().Write(ptr, blob[:]) {
+		defer func() { _ = d.freeInterpreterSettings(ctx, ptr, uint32(len(blob))) }()
+		if !d.mod.Memory().Write(ptr, blob) {
 			return nil, fmt.Errorf("hayro: writing interpreter settings into wasm memory")
 		}
-		interpreterPtr = ptr
+		interpreterPtr, interpreterLen = ptr, uint32(len(blob))
 	}
 
 	widthPtr, err := d.allocU32(ctx)
@@ -114,13 +120,19 @@ func (d *Document) Render(ctx context.Context, pageNumber int, render *RenderSet
 
 	resultPtr, err := d.call1(ctx, "render_page",
 		uint64(d.pdfPtr), uint64(d.pdfLen), uint64(uint32(pageNumber)),
-		uint64(interpreterPtr), uint64(renderPtr), uint64(widthPtr), uint64(heightPtr))
+		uint64(interpreterPtr), uint64(interpreterLen),
+		uint64(renderPtr), uint64(renderLen),
+		uint64(widthPtr), uint64(heightPtr))
 	if err != nil {
 		return nil, err
 	}
 	if resultPtr == 0 {
-		// pageNumber was already validated above, so the only documented
-		// failure mode left is a zero-area render.
+		// pageNumber was already validated above, and this package's own
+		// encode() always produces JSON matching hayro-wasm-bridge's
+		// schema, so the only failure mode left in practice is a
+		// zero-area render — but the wasm side treats malformed settings
+		// JSON as the same null-pointer failure, so this covers that too
+		// (it would indicate a hayro-wasm-go bug, not a caller mistake).
 		return nil, ErrRenderFailed
 	}
 
