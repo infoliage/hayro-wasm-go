@@ -3,6 +3,7 @@ package hayro
 import (
 	"context"
 	"errors"
+	"image/color"
 	"os"
 	"testing"
 )
@@ -127,12 +128,51 @@ func TestRenderWithSettings(t *testing.T) {
 	}
 	defer doc.Close(ctx)
 
-	img, err := doc.Render(ctx, 1, &RenderSettings{Width: 100, Height: 50}, nil)
+	img, err := doc.Render(ctx, 1, &RenderSettings{Width: new(uint16(100)), Height: new(uint16(50))}, nil)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 	if img.Rect.Dx() != 100 || img.Rect.Dy() != 50 {
 		t.Fatalf("Render() size = %dx%d, want 100x50", img.Rect.Dx(), img.Rect.Dy())
+	}
+}
+
+func TestRenderExplicitZeroScaleIsZeroAreaNotDefault(t *testing.T) {
+	// Confirms the semantic this whole JSON wire format exists for: an
+	// explicit 0 must not be reinterpreted as "use hayro's default", the
+	// way it was in an earlier byte-packed version of this wire format —
+	// see hayro-wasm-bridge's schema/render-settings.schema.json.
+	ctx := context.Background()
+	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer doc.Close(ctx)
+
+	_, err = doc.Render(ctx, 1, &RenderSettings{XScale: new(float32(0)), YScale: new(float32(0))}, nil)
+	if !errors.Is(err, ErrRenderFailed) {
+		t.Fatalf("Render() error = %v, want ErrRenderFailed", err)
+	}
+}
+
+func TestRenderBackgroundColorOverride(t *testing.T) {
+	ctx := context.Background()
+	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer doc.Close(ctx)
+
+	bg := color.NRGBA{R: 10, G: 20, B: 30, A: 255}
+	img, err := doc.Render(ctx, 1, &RenderSettings{BackgroundColor: &bg}, nil)
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	// Top-left corner is well outside MINIMAL_PDF's text (see its doc
+	// comment), so it's guaranteed to be pure background.
+	if got := img.NRGBAAt(0, 0); got != bg {
+		t.Errorf("corner pixel = %+v, want %+v", got, bg)
 	}
 }
 

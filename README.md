@@ -34,11 +34,29 @@ img, err := doc.Render(ctx, 1, nil, nil) // *image.NRGBA, page 1, hayro's defaul
 
 Pass non-nil `*RenderSettings`/`*InterpreterSettings` to `Render` for
 anything other than `hayro`'s defaults — see their doc comments in
-`settings.go`. Both types' zero values mean "use the default", so it's fine
-to only set the fields you care about. In particular, `RenderSettings`'s
-`Width`/`Height` default to "auto" (derived from the page's own point size
-at the given scale) — pass `nil` for `render` entirely, as above, unless
-you actually need to force specific pixel dimensions.
+`settings.go`. Every field in both types is a pointer; `nil` means "use the
+default for that field", so it's fine to only set the fields you care
+about — Go 1.26's `new(expr)` (not just the older `new(Type)`) builds a
+literal inline, no helper function needed:
+
+```go
+img, err := doc.Render(ctx, 1, &hayro.RenderSettings{
+    Width:  new(uint16(800)),
+    Height: new(uint16(600)),
+}, nil)
+```
+
+In particular, `RenderSettings`'s `Width`/`Height` default to "auto"
+(derived from the page's own point size at the given scale) — pass `nil`
+for `render` entirely, as above, unless you actually need to force
+specific pixel dimensions.
+
+Under the hood, `Render` JSON-encodes whichever settings you pass and
+hands the bytes to `hayro-wasm-bridge`'s wasm module — see that crate's
+README ("Why JSON for the settings blobs") for why, and
+`schema/*.json` there for the wire format both sides agree on. This is an
+implementation detail; callers only ever see `RenderSettings`/
+`InterpreterSettings`.
 
 ## Example
 
