@@ -1,6 +1,6 @@
-module hayro-wasm-go
+module github.com/infoliage/hayro-wasm-go
 
-go 1.26.4
+go 1.26
 
 require github.com/tetratelabs/wazero v1.12.0
 

@@ -10,7 +10,7 @@ import (
 	"image/png"
 	"os"
 
-	hayro "hayro-wasm-go"
+	hayro "github.com/infoliage/hayro-wasm-go"
 )
 
 func main() {
