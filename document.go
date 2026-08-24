@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"math/bits"
 	"sync"
 
 	"github.com/tetratelabs/wazero/api"
@@ -24,7 +25,7 @@ type Document struct {
 	mod      api.Module
 	pdfPtr   uint32
 	pdfLen   uint32
-	numPages int
+	numPages uint
 	closed   bool
 }
 
@@ -44,19 +45,19 @@ func (d *Document) init(ctx context.Context, pdf []byte) error {
 	}
 	d.pdfPtr, d.pdfLen = ptr, uint32(len(pdf))
 
-	n, err := d.call1(ctx, "page_count", uint64(d.pdfPtr), uint64(d.pdfLen))
+	pageCount, err := d.pageCount(ctx, d.pdfPtr, d.pdfLen)
 	if err != nil {
 		return err
 	}
-	if int32(n) < 0 {
+	if pageCount < 0 {
 		return ErrInvalidPDF
 	}
-	d.numPages = int(n)
+	d.numPages = uint(pageCount)
 	return nil
 }
 
 // PageCount returns the number of pages in the document.
-func (d *Document) PageCount() int {
+func (d *Document) PageCount() uint {
 	return d.numPages
 }
 
@@ -64,7 +65,7 @@ func (d *Document) PageCount() int {
 // to an RGBA image. render and interpreter each independently select a
 // hayro settings struct for this render — pass nil for either to use
 // hayro's defaults.
-func (d *Document) Render(ctx context.Context, pageNumber int, render *RenderSettings, interpreter *InterpreterSettings) (*image.NRGBA, error) {
+func (d *Document) Render(ctx context.Context, pageNumber uint, render *RenderSettings, interpreter *InterpreterSettings) (*image.NRGBA, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -117,12 +118,11 @@ func (d *Document) Render(ctx context.Context, pageNumber int, render *RenderSet
 		return nil, err
 	}
 	defer func() { _ = d.freeU32(ctx, heightPtr) }()
+	resultPtr, err := d.renderPage(ctx, d.pdfPtr, d.pdfLen, uint32(pageNumber),
+		interpreterPtr, interpreterLen,
+		renderPtr, renderLen,
+		widthPtr, heightPtr)
 
-	resultPtr, err := d.call1(ctx, "render_page",
-		uint64(d.pdfPtr), uint64(d.pdfLen), uint64(uint32(pageNumber)),
-		uint64(interpreterPtr), uint64(interpreterLen),
-		uint64(renderPtr), uint64(renderLen),
-		uint64(widthPtr), uint64(heightPtr))
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,15 @@ func (d *Document) Render(ctx context.Context, pageNumber int, render *RenderSet
 	}
 	defer func() { _ = d.freePixels(ctx, resultPtr, width, height) }()
 
-	pix, ok := d.mod.Memory().Read(resultPtr, width*height*4)
+	// width*height*4 as uint32 arithmetic can overflow.  bits.Mul32,
+	// chained, catches an overflow at either step.
+	hi, wh := bits.Mul32(width, height)
+	hi2, pixLen := bits.Mul32(wh, 4)
+	if hi != 0 || hi2 != 0 {
+		return nil, fmt.Errorf("hayro: rendered pixel buffer too large to read (%dx%d)", width, height)
+	}
+
+	pix, ok := d.mod.Memory().Read(resultPtr, pixLen)
 	if !ok {
 		return nil, fmt.Errorf("hayro: reading rendered pixels from wasm memory")
 	}
