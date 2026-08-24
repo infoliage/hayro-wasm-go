@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	page := flag.Int("page", 1, "1-based page number to render")
+	page := flag.Uint("page", 1, "1-based page number to render")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: %s [-page N] input.pdf output.png\n", os.Args[0])
 		flag.PrintDefaults()
@@ -34,7 +34,7 @@ func main() {
 	}
 }
 
-func run(inPath, outPath string, page int) error {
+func run(inPath, outPath string, page uint) error {
 	ctx := context.Background()
 
 	pdfBytes, err := os.ReadFile(inPath)
