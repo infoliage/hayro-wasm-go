@@ -21,12 +21,12 @@ import (
 // per goroutine, via the same Engine); each gets its own module instance
 // and can proceed independently.
 type Document struct {
-	mu       sync.Mutex
-	mod      api.Module
-	pdfPtr   uint32
-	pdfLen   uint32
-	numPages uint
-	closed   bool
+	mu     sync.Mutex
+	mod    api.Module
+	pdfPtr uint32
+	pdfLen uint32
+	info   DocumentInfo
+	closed bool
 }
 
 // init loads pdf into the module's memory and validates it parses. It
@@ -45,20 +45,120 @@ func (d *Document) init(ctx context.Context, pdf []byte) error {
 	}
 	d.pdfPtr, d.pdfLen = ptr, uint32(len(pdf))
 
-	pageCount, err := d.pageCount(ctx, d.pdfPtr, d.pdfLen)
+	info, err := d.fetchDocumentInfo(ctx)
 	if err != nil {
 		return err
 	}
-	if pageCount < 0 {
+	if info == nil {
 		return ErrInvalidPDF
 	}
-	d.numPages = uint(pageCount)
+	d.info = *info
 	return nil
+}
+
+// fetchDocumentInfo calls document_info and decodes the result. It returns
+// (nil, nil) if the PDF didn't parse — distinct from a non-nil err, which
+// means the call or decoding itself went wrong (a bridge/host drift, not a
+// bad PDF).
+func (d *Document) fetchDocumentInfo(ctx context.Context) (*DocumentInfo, error) {
+	lenOutPtr, err := d.allocU32(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = d.freeU32(ctx, lenOutPtr) }()
+
+	ptr, err := d.documentInfo(ctx, d.pdfPtr, d.pdfLen, lenOutPtr)
+	if err != nil {
+		return nil, err
+	}
+	if ptr == 0 {
+		return nil, nil
+	}
+
+	length, ok := d.mod.Memory().ReadUint32Le(lenOutPtr)
+	if !ok {
+		return nil, fmt.Errorf("hayro: reading document_info length from wasm memory")
+	}
+	defer func() { _ = d.freeDocumentInfo(ctx, ptr, length) }()
+
+	blob, ok := d.mod.Memory().Read(ptr, length)
+	if !ok {
+		return nil, fmt.Errorf("hayro: reading document_info from wasm memory")
+	}
+
+	wire, err := decodeJSON[documentInfoWire](blob)
+	if err != nil {
+		return nil, fmt.Errorf("hayro: decoding document_info: %w", err)
+	}
+	info, err := wire.toDocumentInfo()
+	if err != nil {
+		return nil, fmt.Errorf("hayro: decoding document_info: %w", err)
+	}
+	return &info, nil
 }
 
 // PageCount returns the number of pages in the document.
 func (d *Document) PageCount() uint {
-	return d.numPages
+	return d.info.PageCount
+}
+
+// Info returns document-level metadata: page count, PDF version, and the
+// document information dictionary's metadata (title/author/subject/
+// keywords/creator/producer, creation/modification dates). It was already
+// fetched during Open (to validate the PDF and learn its page count), so
+// this returns a cached copy — no further wasm call.
+func (d *Document) Info() DocumentInfo {
+	return d.info
+}
+
+// PageInfo returns one page's geometry (pageNumber is 1-based, in [1,
+// PageCount()]) without rendering it — much cheaper than Render when all
+// you need is the page size, e.g. to compute a thumbnail's aspect ratio
+// before deciding what to render at.
+func (d *Document) PageInfo(ctx context.Context, pageNumber uint) (PageInfo, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if d.closed {
+		return PageInfo{}, ErrClosed
+	}
+	if pageNumber < 1 || pageNumber > d.info.PageCount {
+		return PageInfo{}, ErrPageOutOfRange
+	}
+
+	lenOutPtr, err := d.allocU32(ctx)
+	if err != nil {
+		return PageInfo{}, err
+	}
+	defer func() { _ = d.freeU32(ctx, lenOutPtr) }()
+
+	ptr, err := d.pageInfo(ctx, d.pdfPtr, d.pdfLen, uint32(pageNumber), lenOutPtr)
+	if err != nil {
+		return PageInfo{}, err
+	}
+	if ptr == 0 {
+		// pageNumber was already validated above, so the only failure mode
+		// left in practice is an internal serialization/allocation failure
+		// on the wasm side, not a caller mistake.
+		return PageInfo{}, fmt.Errorf("hayro: page_info failed unexpectedly for page %d", pageNumber)
+	}
+
+	length, ok := d.mod.Memory().ReadUint32Le(lenOutPtr)
+	if !ok {
+		return PageInfo{}, fmt.Errorf("hayro: reading page_info length from wasm memory")
+	}
+	defer func() { _ = d.freePageInfo(ctx, ptr, length) }()
+
+	blob, ok := d.mod.Memory().Read(ptr, length)
+	if !ok {
+		return PageInfo{}, fmt.Errorf("hayro: reading page_info from wasm memory")
+	}
+
+	wire, err := decodeJSON[pageInfoWire](blob)
+	if err != nil {
+		return PageInfo{}, fmt.Errorf("hayro: decoding page_info: %w", err)
+	}
+	return wire.toPageInfo(), nil
 }
 
 // Render rasterizes one page (pageNumber is 1-based, in [1, PageCount()])
@@ -72,7 +172,7 @@ func (d *Document) Render(ctx context.Context, pageNumber uint, render *RenderSe
 	if d.closed {
 		return nil, ErrClosed
 	}
-	if pageNumber < 1 || pageNumber > d.numPages {
+	if pageNumber < 1 || pageNumber > d.info.PageCount {
 		return nil, ErrPageOutOfRange
 	}
 

@@ -7,7 +7,7 @@ compiled wasm module — itself a wasm build of
 
 This package's public surface is `Engine` and `Document`: `Engine` wraps the
 one-time wasm compilation step (`NewEngine`, `Open`, `Close`); `Document` is
-one open PDF (`PageCount`/`Render`/`Close`).
+one open PDF (`PageCount`/`Info`/`PageInfo`/`Render`/`Close`).
 
 **Please note the API revisions are planned in the near future**; this should
 be considered Alpha software with no published versions (yet).
@@ -31,6 +31,24 @@ defer doc.Close(ctx)
 fmt.Println(doc.PageCount())
 
 img, err := doc.Render(ctx, 1, nil, nil) // *image.NRGBA, page 1, hayro's defaults
+```
+
+`Document.Info` (document title/author/etc, PDF version) and
+`Document.PageInfo` (one page's size/rotation/media box) are cheap
+alternatives to `Render` for callers who only need to know something about
+a PDF, not draw it — `PageInfo`, in particular, gets you a page's pixel
+dimensions (at any scale, via its `Width`/`Height`) without rasterizing
+anything:
+
+```go
+info := doc.Info() // no error, no further wasm call — fetched during Open
+fmt.Println(info.PageCount, info.Version)
+if info.Title != nil {
+    fmt.Println(*info.Title)
+}
+
+page, err := doc.PageInfo(ctx, 1)
+fmt.Printf("page 1 is %vx%v points, rotated %d°\n", page.Width, page.Height, page.Rotation)
 ```
 
 Pass non-nil `*RenderSettings`/`*InterpreterSettings` to `Render` for
@@ -59,7 +77,14 @@ page of a PDF to a PNG.
 ```sh
 go run ./examples/topng input.pdf output.png        # page 1
 go run ./examples/topng -page 2 input.pdf output.png
+go run ./examples/topng -width 800 input.pdf output.png   # 800px wide, height scaled to match
+go run ./examples/topng -height 600 input.pdf output.png  # 600px tall, width scaled to match
+go run ./examples/topng -width 800 -height 600 input.pdf output.png # exact, may distort
 ```
+
+`-width`/`-height` alone use `Document.PageInfo` to scale the other
+dimension proportionally (uniform scaling, no distortion); passing both
+overrides each exactly instead.
 
 ## The embedded wasm module
 
