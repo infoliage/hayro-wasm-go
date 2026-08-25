@@ -20,14 +20,6 @@ func result_to_uint32(res []uint64, err error) (uint32, error) {
 	return api.DecodeU32(res[0]), err
 }
 
-// result_to_int32 converts signed results
-func result_to_int32(res []uint64, err error) (int32, error) {
-	if err != nil {
-		return 0, err
-	}
-	return api.DecodeI32(res[0]), err
-}
-
 // call invokes the named export and returns its raw uint64 results. wazero
 // represents every wasm value type (i32/i64/f32/f64) as a bit-reinterpreted
 // uint64, so callers are responsible for casting to/from the right width.
@@ -84,8 +76,22 @@ func (d *Document) freePixels(ctx context.Context, ptr, width, height uint32) er
 	return err
 }
 
-func (d *Document) pageCount(ctx context.Context, pdfPtr, pdfLen uint32) (int32, error) {
-	return result_to_int32(d.call(ctx, "page_count", uint64(pdfPtr), uint64(pdfLen)))
+func (d *Document) pageInfo(ctx context.Context, pdfPtr, pdfLen, pageNumber, lenOutPtr uint32) (uint32, error) {
+	return result_to_uint32(d.call(ctx, "page_info", uint64(pdfPtr), uint64(pdfLen), uint64(pageNumber), uint64(lenOutPtr)))
+}
+
+func (d *Document) freePageInfo(ctx context.Context, ptr, length uint32) error {
+	_, err := d.call(ctx, "free_page_info", uint64(ptr), uint64(length))
+	return err
+}
+
+func (d *Document) documentInfo(ctx context.Context, pdfPtr, pdfLen, lenOutPtr uint32) (uint32, error) {
+	return result_to_uint32(d.call(ctx, "document_info", uint64(pdfPtr), uint64(pdfLen), uint64(lenOutPtr)))
+}
+
+func (d *Document) freeDocumentInfo(ctx context.Context, ptr, length uint32) error {
+	_, err := d.call(ctx, "free_document_info", uint64(ptr), uint64(length))
+	return err
 }
 
 func (d *Document) renderPage(ctx context.Context, pdfPtr, pdfLen, pageNumber, interpSettingsPtr, interpSettingsLen, renderSettingsPtr, renderSettingsLen, heightPtr, widthPtr uint32) (uint32, error) {
