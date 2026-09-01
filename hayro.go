@@ -8,8 +8,7 @@
 // (https://crates.io/crates/hayro).
 //
 // The wasm module is embedded directly into this package's binary (see
-// wasm/hayro_wasm_bridge.wasm and the Makefile's update-wasm target), so
-// there's nothing to fetch or load separately at runtime.
+// wasm/hayro_wasm_bridge.wasm and the Makefile's update-wasm target).
 package hayro
 
 import (
