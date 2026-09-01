@@ -103,8 +103,10 @@ func buildRenderSettings(natural hayro.PageInfo, size sizeFlags, xScale, yScale 
 			return nil, err
 		}
 		render.XScale, render.YScale = &xs, &ys
-		render.Width = new(uint16(size.width))
-		render.Height = new(uint16(size.height))
+		width := uint16(size.width)
+		height := uint16(size.height)
+		render.Width = &width
+		render.Height = &height
 	case size.widthSet || size.heightSet:
 		w, h, s, err := aspectFill(natural, size)
 		if err != nil {
@@ -114,10 +116,12 @@ func buildRenderSettings(natural hayro.PageInfo, size sizeFlags, xScale, yScale 
 		render.XScale, render.YScale = &s, &s
 	}
 	if xScaleSet {
-		render.XScale = new(float32(xScale))
+		xscale32 := float32(xScale)
+		render.XScale = &xscale32
 	}
 	if yScaleSet {
-		render.YScale = new(float32(yScale))
+		yscale32 := float32(yScale)
+		render.YScale = &yscale32
 	}
 	if bgColorSet {
 		c, err := parseHexColor(bgColor)
