@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-package hayro
+package hayro_wasm_go
 
 import (
 	"context"
