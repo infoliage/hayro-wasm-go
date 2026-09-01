@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: Apache-2.0 OR MIT
 
-package hayro
+package hayro_wasm_go
 
 // Low-level calls into a Document's wasm module instance — the only place
 // in this package that speaks in terms of pointers rather than Go values.
