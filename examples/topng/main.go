@@ -1,6 +1,10 @@
-// Command topng renders one page of a PDF to a PNG, using hayro-wasm-go's
-// defaults throughout — a minimal end-to-end usage example for the
-// package, not a general-purpose PDF-to-image tool.
+// Copyright 2026 Infoliage LLC. All rights reserved.
+// Use is subject to license terms.
+//
+// SPDX-License-Identifier: Apache-2.0 OR MIT
+
+// Command topng renders one page of a PDF to a PNG, as a
+// minimal usage example for the package.
 package main
 
 import (
