@@ -166,7 +166,9 @@ func TestRenderWithSettings(t *testing.T) {
 	}
 	defer doc.Close(ctx)
 
-	img, err := doc.Render(ctx, 1, &RenderSettings{Width: new(uint16(100)), Height: new(uint16(50))}, nil)
+	width := uint16(100)
+	height := uint16(50)
+	img, err := doc.Render(ctx, 1, &RenderSettings{Width: &width, Height: &height}, nil)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -187,7 +189,9 @@ func TestRenderExplicitZeroScaleIsZeroAreaNotDefault(t *testing.T) {
 	}
 	defer doc.Close(ctx)
 
-	_, err = doc.Render(ctx, 1, &RenderSettings{XScale: new(float32(0)), YScale: new(float32(0))}, nil)
+	xscale := float32(0)
+	yscale := float32(0)
+	_, err = doc.Render(ctx, 1, &RenderSettings{XScale: &xscale, YScale: &yscale}, nil)
 	if !errors.Is(err, ErrRenderFailed) {
 		t.Fatalf("Render() error = %v, want ErrRenderFailed", err)
 	}
