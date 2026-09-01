@@ -9,7 +9,7 @@
 //
 // The wasm module is embedded directly into this package's binary (see
 // wasm/hayro_wasm_bridge.wasm and the Makefile's update-wasm target).
-package hayro
+package hayro_wasm_go
 
 import (
 	_ "embed"
