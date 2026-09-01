@@ -239,8 +239,9 @@ func run(inPath, outPath string, page uint, size sizeFlags, xScale, yScale float
 	}
 	defer doc.Close(ctx)
 
-	if page < 1 || page > doc.PageCount() {
-		return fmt.Errorf("page %d out of range (document has %d page(s))", page, doc.PageCount())
+	pageCount := doc.Info().PageCount
+	if page < 1 || page > pageCount {
+		return fmt.Errorf("page %d out of range (document has %d page(s))", page, pageCount)
 	}
 
 	// Only fetch the page's natural size (an extra, if cheap, wasm call)
@@ -278,6 +279,6 @@ func run(inPath, outPath string, page uint, size sizeFlags, xScale, yScale float
 		return fmt.Errorf("encoding png: %w", err)
 	}
 
-	fmt.Printf("wrote %s (%dx%d, page %d of %d)\n", outPath, img.Rect.Dx(), img.Rect.Dy(), page, doc.PageCount())
+	fmt.Printf("wrote %s (%dx%d, page %d of %d)\n", outPath, img.Rect.Dx(), img.Rect.Dy(), page, pageCount)
 	return nil
 }

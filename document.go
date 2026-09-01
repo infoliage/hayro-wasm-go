@@ -102,11 +102,6 @@ func (d *Document) fetchDocumentInfo(ctx context.Context) (*DocumentInfo, error)
 	return &info, nil
 }
 
-// PageCount returns the number of pages in the document.
-func (d *Document) PageCount() uint {
-	return d.info.PageCount
-}
-
 // Info returns document-level metadata: page count, PDF version, and the
 // document information dictionary's metadata (title/author/subject/
 // keywords/creator/producer, creation/modification dates). It was already
@@ -117,7 +112,7 @@ func (d *Document) Info() DocumentInfo {
 }
 
 // PageInfo returns one page's geometry (pageNumber is 1-based, in [1,
-// PageCount()]) without rendering it — much cheaper than Render when all
+// PageCount]) without rendering it — much cheaper than Render when all
 // you need is the page size, e.g. to compute a thumbnail's aspect ratio
 // before deciding what to render at.
 func (d *Document) PageInfo(ctx context.Context, pageNumber uint) (PageInfo, error) {
@@ -166,7 +161,7 @@ func (d *Document) PageInfo(ctx context.Context, pageNumber uint) (PageInfo, err
 	return wire.toPageInfo(), nil
 }
 
-// Render rasterizes one page (pageNumber is 1-based, in [1, PageCount()])
+// Render rasterizes one page (pageNumber is 1-based, in [1, PageCount])
 // to an RGBA image. render and interpreter each independently select a
 // hayro settings struct for this render — pass nil for either to use
 // hayro's defaults.
