@@ -1,3 +1,10 @@
+```
+Copyright 2026 Infoliage LLC. All rights reserved.
+Use is subject to license terms.
+
+SPDX-License-Identifier: Apache-2.0 OR MIT
+```
+
 # hayro-wasm-go
 
 An Go package wrapping [`hayro-wasm-bridge`](../hayro-wasm-bridge)'s
