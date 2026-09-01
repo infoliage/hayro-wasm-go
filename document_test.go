@@ -111,8 +111,8 @@ func TestOpenAndPageCount(t *testing.T) {
 	}
 	defer doc.Close(ctx)
 
-	if got := doc.PageCount(); got != 1 {
-		t.Fatalf("PageCount() = %d, want 1", got)
+	if got := doc.Info().PageCount; got != 1 {
+		t.Fatalf("PageCount = %d, want 1", got)
 	}
 }
 
