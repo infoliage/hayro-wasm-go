@@ -233,7 +233,7 @@ func run(inPath, outPath string, page uint, size sizeFlags, xScale, yScale float
 	}
 	defer engine.Close(ctx)
 
-	doc, err := engine.Open(ctx, pdfBytes)
+	doc, err := engine.OpenDocument(ctx, pdfBytes)
 	if err != nil {
 		return fmt.Errorf("opening %s: %w", inPath, err)
 	}
