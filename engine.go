@@ -48,15 +48,14 @@ func NewEngine(ctx context.Context) (*Engine, error) {
 	return &Engine{runtime: rt, compiled: compiled}, nil
 }
 
-// Open parses pdf — the raw bytes of a PDF file — and returns a Document
-// backed by a fresh module instance. The caller must call Close on the
-// returned Document when done with it; that's independent of, and doesn't
-// require, closing the Engine.
+// OpenDocument parses pdf — the raw bytes of a PDF file — and returns a
+// Document backed by a fresh module instance. The caller must call
+// `Document.Close()` when it is done with the document.  Keep the engine
+// around for the handling the next PDF.
 //
-// Open validates that pdf actually parses (returning ErrInvalidPDF if not)
-// rather than deferring that failure to the first PageCount or Render
-// call.
-func (e *Engine) Open(ctx context.Context, pdf []byte) (*Document, error) {
+// OpenDocument validates that pdf actually parses (returning ErrInvalidPDF if
+// not).
+func (e *Engine) OpenDocument(ctx context.Context, pdf []byte) (*Document, error) {
 	name := fmt.Sprintf("hayro-%d", e.nextID.Add(1))
 	mod, err := e.runtime.InstantiateModule(ctx, e.compiled, wazero.NewModuleConfig().WithName(name))
 	if err != nil {
@@ -73,7 +72,7 @@ func (e *Engine) Open(ctx context.Context, pdf []byte) (*Document, error) {
 
 // Close closes the Engine's underlying wazero.Runtime — and, per wazero's
 // own semantics, every Document instantiated from it that hasn't already
-// been closed. Call it once, at process shutdown; not after every Open.
+// been closed. Typically it would be called only once, at process shutdown.
 func (e *Engine) Close(ctx context.Context) error {
 	return e.runtime.Close(ctx)
 }

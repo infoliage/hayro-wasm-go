@@ -105,7 +105,7 @@ startxref
 
 func TestOpenAndPageCount(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestOpenAndPageCount(t *testing.T) {
 
 func TestOpenInvalidPDF(t *testing.T) {
 	ctx := context.Background()
-	_, err := testEngine.Open(ctx, []byte("not a pdf"))
+	_, err := testEngine.OpenDocument(ctx, []byte("not a pdf"))
 	if !errors.Is(err, ErrInvalidPDF) {
 		t.Fatalf("Open() error = %v, want ErrInvalidPDF", err)
 	}
@@ -126,7 +126,7 @@ func TestOpenInvalidPDF(t *testing.T) {
 
 func TestRenderDefaults(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestRenderDefaults(t *testing.T) {
 
 func TestRenderPageOutOfRange(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestRenderPageOutOfRange(t *testing.T) {
 
 func TestRenderWithSettings(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestRenderExplicitZeroScaleIsZeroAreaNotDefault(t *testing.T) {
 	// way it was in an earlier byte-packed version of this wire format —
 	// see hayro-wasm-bridge's schema/render-settings.schema.json.
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestRenderExplicitZeroScaleIsZeroAreaNotDefault(t *testing.T) {
 
 func TestRenderBackgroundColorOverride(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestRenderBackgroundColorOverride(t *testing.T) {
 
 func TestCloseIsIdempotent(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -253,7 +253,7 @@ func wantStrPtr(t *testing.T, field string, got *string, want string) {
 
 func TestDocumentInfoNoMetadataDict(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestDocumentInfoNoMetadataDict(t *testing.T) {
 
 func TestDocumentInfoWithMetadataAndDates(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(rotatedWithMetadataPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(rotatedWithMetadataPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestDocumentInfoWithMetadataAndDates(t *testing.T) {
 
 func TestPageInfoDefaults(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -347,7 +347,7 @@ func TestPageInfoDefaults(t *testing.T) {
 
 func TestPageInfoRotationSwapsRenderDimensionsButNotBoxes(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(rotatedWithMetadataPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(rotatedWithMetadataPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -373,7 +373,7 @@ func TestPageInfoRotationSwapsRenderDimensionsButNotBoxes(t *testing.T) {
 
 func TestPageInfoOutOfRange(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
@@ -389,7 +389,7 @@ func TestPageInfoOutOfRange(t *testing.T) {
 
 func TestPageInfoAfterCloseIsErrClosed(t *testing.T) {
 	ctx := context.Background()
-	doc, err := testEngine.Open(ctx, []byte(minimalPDF))
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
