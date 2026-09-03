@@ -1,3 +1,8 @@
+# Copyright 2026 Infoliage LLC. All rights reserved.
+# Use is subject to license terms.
+#
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+
 .PHONY: build lint test tidy-check update-wasm clean
 
 build:
