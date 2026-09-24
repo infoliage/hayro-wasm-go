@@ -1,3 +1,5 @@
+[![Go Reference](https://pkg.go.dev/badge/github.com/infoliage/hayro-wasm-go.svg)](https://pkg.go.dev/github.com/infoliage/hayro-wasm-go)
+
 ```
 Copyright 2026 Infoliage LLC. All rights reserved.
 Use is subject to license terms.
