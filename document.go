@@ -26,12 +26,13 @@ import (
 // per goroutine, via the same Engine); each gets its own module instance
 // and can proceed independently.
 type Document struct {
-	mu     sync.Mutex
-	mod    api.Module
-	pdfPtr uint32
-	pdfLen uint32
-	info   DocumentInfo
-	closed bool
+	mu      sync.Mutex
+	mod     api.Module
+	pdfPtr  uint32
+	pdfLen  uint32
+	info    DocumentInfo
+	closed  bool
+	crashed bool // a wasm call trapped; see call.
 }
 
 // init loads pdf into the module's memory and validates it parses. It
@@ -109,6 +110,12 @@ func (d *Document) fetchDocumentInfo(ctx context.Context) (*DocumentInfo, error)
 // this returns a cached copy — no further wasm call.
 func (d *Document) Info() DocumentInfo {
 	return d.info
+}
+
+// WasmMemorySize returns the current size of the underlying WASM VM in bytes;
+// this can be helpful for monitoring memory usage.
+func (d *Document) WasmMemorySize() uint32 {
+	return d.mod.Memory().Size()
 }
 
 // PageInfo returns one page's geometry (pageNumber is 1-based, in [1,
@@ -272,7 +279,7 @@ func (d *Document) Render(ctx context.Context, pageNumber uint, render *RenderSe
 }
 
 // Close releases the Document's wasm module instance. It is safe to call
-// more than once.
+// more than once, and must still be called after a crash (see ErrCrashed).
 func (d *Document) Close(ctx context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -285,7 +292,8 @@ func (d *Document) Close(ctx context.Context) error {
 	// but freeing what was allocated, symmetrically, doesn't depend on it
 	// staying true (e.g. if Close ever pooled/reused instances instead of
 	// always tearing them down). Best-effort: a failure here shouldn't
-	// stop the module instance itself from being closed below.
+	// stop the module instance itself from being closed below. After a
+	// crash, call skips it.
 	_ = d.freePDF(ctx, d.pdfPtr, d.pdfLen)
 	return d.mod.Close(ctx)
 }

@@ -25,17 +25,28 @@ func result_to_uint32(res []uint64, err error) (uint32, error) {
 	return api.DecodeU32(res[0]), err
 }
 
+func result_void(res []uint64, err error) error {
+	return err
+}
+
 // call invokes the named export and returns its raw uint64 results. wazero
 // represents every wasm value type (i32/i64/f32/f64) as a bit-reinterpreted
 // uint64, so callers are responsible for casting to/from the right width.
+//
+// A failed call (a trap — e.g. a Rust panic or allocation failure inside
+// the module) marks the Document crashed, resulting in ErrCrashed.
 func (d *Document) call(ctx context.Context, name string, args ...uint64) ([]uint64, error) {
+	if d.crashed {
+		return nil, ErrCrashed
+	}
 	fn := d.mod.ExportedFunction(name)
 	if fn == nil {
 		return nil, fmt.Errorf("hayro: wasm module has no export %q (built from an incompatible hayro-wasm-bridge version?)", name)
 	}
 	res, err := fn.Call(ctx, args...)
 	if err != nil {
-		return nil, fmt.Errorf("hayro: calling %q: %w", name, err)
+		d.crashed = true
+		return nil, fmt.Errorf("%w: calling %q: %w", ErrCrashed, name, err)
 	}
 	return res, nil
 }
@@ -45,8 +56,7 @@ func (d *Document) allocPDF(ctx context.Context, size uint32) (uint32, error) {
 }
 
 func (d *Document) freePDF(ctx context.Context, ptr, size uint32) error {
-	_, err := d.call(ctx, "free_pdf", uint64(ptr), uint64(size))
-	return err
+	return result_void(d.call(ctx, "free_pdf", uint64(ptr), uint64(size)))
 }
 
 func (d *Document) allocRenderSettings(ctx context.Context, size uint32) (uint32, error) {
@@ -54,8 +64,7 @@ func (d *Document) allocRenderSettings(ctx context.Context, size uint32) (uint32
 }
 
 func (d *Document) freeRenderSettings(ctx context.Context, ptr, size uint32) error {
-	_, err := d.call(ctx, "free_render_settings", uint64(ptr), uint64(size))
-	return err
+	return result_void(d.call(ctx, "free_render_settings", uint64(ptr), uint64(size)))
 }
 
 func (d *Document) allocInterpreterSettings(ctx context.Context, size uint32) (uint32, error) {
@@ -63,8 +72,7 @@ func (d *Document) allocInterpreterSettings(ctx context.Context, size uint32) (u
 }
 
 func (d *Document) freeInterpreterSettings(ctx context.Context, ptr, size uint32) error {
-	_, err := d.call(ctx, "free_interpreter_settings", uint64(ptr), uint64(size))
-	return err
+	return result_void(d.call(ctx, "free_interpreter_settings", uint64(ptr), uint64(size)))
 }
 
 func (d *Document) allocU32(ctx context.Context) (uint32, error) {
@@ -72,13 +80,11 @@ func (d *Document) allocU32(ctx context.Context) (uint32, error) {
 }
 
 func (d *Document) freeU32(ctx context.Context, ptr uint32) error {
-	_, err := d.call(ctx, "free_u32", uint64(ptr))
-	return err
+	return result_void(d.call(ctx, "free_u32", uint64(ptr)))
 }
 
 func (d *Document) freePixels(ctx context.Context, ptr, width, height uint32) error {
-	_, err := d.call(ctx, "free_pixels", uint64(ptr), uint64(width), uint64(height))
-	return err
+	return result_void(d.call(ctx, "free_pixels", uint64(ptr), uint64(width), uint64(height)))
 }
 
 func (d *Document) pageInfo(ctx context.Context, pdfPtr, pdfLen, pageNumber, lenOutPtr uint32) (uint32, error) {
@@ -86,8 +92,7 @@ func (d *Document) pageInfo(ctx context.Context, pdfPtr, pdfLen, pageNumber, len
 }
 
 func (d *Document) freePageInfo(ctx context.Context, ptr, length uint32) error {
-	_, err := d.call(ctx, "free_page_info", uint64(ptr), uint64(length))
-	return err
+	return result_void(d.call(ctx, "free_page_info", uint64(ptr), uint64(length)))
 }
 
 func (d *Document) documentInfo(ctx context.Context, pdfPtr, pdfLen, lenOutPtr uint32) (uint32, error) {
@@ -95,8 +100,7 @@ func (d *Document) documentInfo(ctx context.Context, pdfPtr, pdfLen, lenOutPtr u
 }
 
 func (d *Document) freeDocumentInfo(ctx context.Context, ptr, length uint32) error {
-	_, err := d.call(ctx, "free_document_info", uint64(ptr), uint64(length))
-	return err
+	return result_void(d.call(ctx, "free_document_info", uint64(ptr), uint64(length)))
 }
 
 func (d *Document) renderPage(ctx context.Context, pdfPtr, pdfLen, pageNumber, interpSettingsPtr, interpSettingsLen, renderSettingsPtr, renderSettingsLen, heightPtr, widthPtr uint32) (uint32, error) {
