@@ -24,4 +24,9 @@ var (
 
 	// ErrClosed is returned by any Document method called after Close.
 	ErrClosed = errors.New("hayro: document is closed")
+
+	// ErrCrashed indicates that the WASM module containing the hayro
+	// code experienced a fatal error.  It may have run out of memory or
+	// otherwise crashed.  It can no longer be used, and must be Closed.
+	ErrCrashed = errors.New("hayro: wasm module crashed")
 )
