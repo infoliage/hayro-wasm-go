@@ -13,45 +13,62 @@ import (
 	"github.com/tetratelabs/wazero"
 )
 
-// Engine wraps the wasm compilation step shared by every Document: a
-// wazero.Runtime and a wazero.CompiledModule (the native-compiled wasm
-// code) built once from the embedded module. Compiling is the expensive
-// part — measured at roughly 500-1000x the cost of instantiating a
-// Document from an already-compiled module — so an Engine is meant to be
-// created once and reused for the life of a process, not per Document.
+// Engine holds a compiled WASM module.  For each document you want to
+// process, call OpenDocument.  This will create a lightweight WASM VM
+// which starts up very rapidly.  Use this to process the document, and
+// then call Document.Close().  Typically you can create one Engine for
+// the lifetime of the process.
 //
-// Opening a Document from an Engine is correspondingly cheap: it doesn't
-// recompile anything, just instantiates a fresh, isolated module instance
-// (its own linear memory, its own allocator state) from the shared
-// CompiledModule. There's no pool of pre-warmed instances here — none is
-// needed at that cost.
-//
-// An Engine is safe for concurrent use, including concurrent Open calls:
-// wazero explicitly supports instantiating the same CompiledModule from
-// multiple goroutines at once.
+// Engine is safe for concurrent use, including concurrent Open calls.
 type Engine struct {
+	config   *EngineConfig
 	runtime  wazero.Runtime
 	compiled wazero.CompiledModule
 	nextID   atomic.Uint64
 }
 
+// EngineConfig sets Engine parameters.  In particular this can be used to add
+// additional configuration to the wazero VMs that the Engine creates.
+// Initialize using `NewEngineConfig()`.
+type EngineConfig struct {
+	RuntimeConfig wazero.RuntimeConfig
+}
+
+// NewEngineConfig returns a default EngineConfig.
+func NewEngineConfig() *EngineConfig {
+	return &EngineConfig{
+		RuntimeConfig: wazero.NewRuntimeConfig(),
+	}
+}
+
 // NewEngine compiles the embedded hayro-wasm-bridge module and returns an
-// Engine ready to Open Documents from. The caller should Close it when
-// done — typically once, at process shutdown.
+// Engine which is ready to process documents.  Each document is processed in
+// its own WASM VM.  The caller should Close the Engine when done to free the
+// compiled module.
 func NewEngine(ctx context.Context) (*Engine, error) {
-	rt := wazero.NewRuntime(ctx)
+	cfg := NewEngineConfig()
+	return NewEngineWithConfig(ctx, cfg)
+}
+
+// NewEngineWithConfig is the same as NewEngine, with additional configuration
+// options exposed via EngineConfig. cfg should be generated using
+// NewEngineConfig and then augmented.
+func NewEngineWithConfig(ctx context.Context, cfg *EngineConfig) (*Engine, error) {
+	if cfg == nil || cfg.RuntimeConfig == nil {
+		panic("hayro: NewEngineWithConfig requires a non-nil EngineConfig and RuntimeConfig; use NewEngineConfig")
+	}
+	rt := wazero.NewRuntimeWithConfig(ctx, cfg.RuntimeConfig)
 	compiled, err := rt.CompileModule(ctx, wasmBinary)
 	if err != nil {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("hayro: compiling embedded wasm module: %w", err)
 	}
-	return &Engine{runtime: rt, compiled: compiled}, nil
+	return &Engine{config: cfg, runtime: rt, compiled: compiled}, nil
 }
 
-// OpenDocument parses pdf — the raw bytes of a PDF file — and returns a
-// Document backed by a fresh module instance. The caller must call
-// `Document.Close()` when it is done with the document.  Keep the engine
-// around for the handling the next PDF.
+// OpenDocument parses pdf and returns a Document backed by a fresh wazero
+// Module instance. The caller must call `Document.Close()` when it is done
+// with the document.
 //
 // OpenDocument validates that pdf actually parses (returning ErrInvalidPDF if
 // not).
@@ -70,9 +87,8 @@ func (e *Engine) OpenDocument(ctx context.Context, pdf []byte) (*Document, error
 	return d, nil
 }
 
-// Close closes the Engine's underlying wazero.Runtime — and, per wazero's
-// own semantics, every Document instantiated from it that hasn't already
-// been closed. Typically it would be called only once, at process shutdown.
+// Close closes the Engine's underlying wazero.Runtime.  Any running vms are
+// shut down.  Typically this is called only once, at process shutdown.
 func (e *Engine) Close(ctx context.Context) error {
 	return e.runtime.Close(ctx)
 }
