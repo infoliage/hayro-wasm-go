@@ -238,6 +238,7 @@ func run(inPath, outPath string, page uint, size sizeFlags, xScale, yScale float
 		return fmt.Errorf("opening %s: %w", inPath, err)
 	}
 	defer doc.Close(ctx)
+	fmt.Printf("Module memory size after Open: %dMiB\n", doc.WasmMemorySize()/(1024*1024))
 
 	pageCount := doc.Info().PageCount
 	if page < 1 || page > pageCount {
@@ -268,6 +269,8 @@ func run(inPath, outPath string, page uint, size sizeFlags, xScale, yScale float
 	if err != nil {
 		return fmt.Errorf("rendering page %d: %w", page, err)
 	}
+
+	fmt.Printf("Module memory size after Render: %dMiB\n", doc.WasmMemorySize()/(1024*1024))
 
 	out, err := os.Create(outPath)
 	if err != nil {
