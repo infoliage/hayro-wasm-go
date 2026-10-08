@@ -7,50 +7,72 @@ package hayro_wasm_go
 
 import (
 	"encoding/json"
+	"errors"
 	"image/color"
 )
 
-// RenderSettings mirrors hayro::RenderSettings. Every field is a pointer;
-// nil means "use hayro's default for it" — matching hayro-wasm-bridge's
-// JSON wire format (see its schema/render-settings.schema.json), where an
-// absent field means exactly the same thing. Unlike an earlier
-// byte-packed version of this wire format, an explicit zero value (e.g.
-// XScale pointing at 0.0) is no longer indistinguishable from "unset" — it
-// is honored literally.
-//
-// Example:
-//
-//	hayro.RenderSettings{Width: new(uint16(800))}
+// RenderSettings mirrors hayro::RenderSettings — see hayro-wasm-bridge's
+// schema/render-settings.schema.json.
 type RenderSettings struct {
-	// XScale and YScale are the horizontal/vertical scale factors applied
-	// to the page's own point size. nil means "use hayro's default
-	// (1.0)". An explicit 0 is honored literally, and (like any other
-	// zero scale) produces a zero-area, and thus failing, render.
-	XScale *float32
-	YScale *float32
+	// ForceImageInterpolation: true draws every image with bilinear
+	// interpolation, whatever the PDF asks for. nil means "use hayro's
+	// default" (false).
+	ForceImageInterpolation *bool `json:"force_image_interpolation,omitempty"`
+}
 
-	// Width and Height override the rendered pixel dimensions directly.
-	// nil means "auto" — derived from the page size and XScale/YScale.
+func (s RenderSettings) encode() ([]byte, error) {
+	return json.Marshal(s)
+}
+
+// PixmapSettings describes the canvas a page is drawn onto: what hayro
+// splits between its own PixmapSettings and the context/transform
+// arguments of hayro::render_into. Every field is a pointer; nil means
+// "use the default for it" — matching hayro-wasm-bridge's JSON wire format
+// (see its schema/pixmap-settings.schema.json), where an absent field
+// means exactly the same thing.
+//
+// Example, rendering a page at twice its natural size (page being its
+// PageInfo):
+//
+//	hayro.PixmapSettings{
+//		Width:     new(uint16(page.Width * 2)),
+//		Height:    new(uint16(page.Height * 2)),
+//		Transform: new(hayro.Scale(2, 2)),
+//	}
+type PixmapSettings struct {
+	// Width and Height are the canvas size in pixels. nil means the
+	// page's own size (PageInfo's Width/Height, truncated to whole
+	// pixels), which is only allowed when Transform is nil too. A zero
+	// Width or Height fails the render.
 	Width  *uint16
 	Height *uint16
 
-	// BackgroundColor uses straight (non-premultiplied) alpha, matching
-	// its own type (color.NRGBA, not color.RGBA). nil means "use hayro's
-	// default" (i.e. #00000000 — fully transparent black).
+	// Transform maps upright page space — points, origin at the page's
+	// top-left corner, y pointing down, with the page's rotation and crop
+	// box already applied — to canvas pixels. nil means Identity, i.e.
+	// one pixel per point. Width and Height must both be set alongside
+	// it: a transform has no canvas size that is obviously right for it.
+	// Whatever the transform, nothing outside the page's crop box is
+	// drawn.
+	Transform *Affine
+
+	// BackgroundColor is what the canvas is cleared to before the page
+	// is drawn. It uses straight (non-premultiplied) alpha, matching its
+	// own type (color.NRGBA, not color.RGBA). nil means #00000000 —
+	// fully transparent black.
 	BackgroundColor *color.NRGBA
 }
 
-// renderSettingsWire is RenderSettings' JSON shape on the wire — see
-// hayro-wasm-bridge's schema/render-settings.schema.json for the
-// authoritative description. A separate type from RenderSettings itself
+// pixmapSettingsWire is PixmapSettings' JSON shape on the wire — see
+// hayro-wasm-bridge's schema/pixmap-settings.schema.json for the
+// authoritative description. A separate type from PixmapSettings itself
 // because color.NRGBA has no json tags of its own, and its field names
 // (R, G, B, A) don't match the wire's lowercase r/g/b/a.
-type renderSettingsWire struct {
-	XScale  *float32  `json:"x_scale,omitempty"`
-	YScale  *float32  `json:"y_scale,omitempty"`
-	Width   *uint16   `json:"width,omitempty"`
-	Height  *uint16   `json:"height,omitempty"`
-	BgColor *rgbaWire `json:"bg_color,omitempty"`
+type pixmapSettingsWire struct {
+	Width     *uint16   `json:"width,omitempty"`
+	Height    *uint16   `json:"height,omitempty"`
+	Transform *Affine   `json:"transform,omitempty"`
+	BgColor   *rgbaWire `json:"bg_color,omitempty"`
 }
 
 type rgbaWire struct {
@@ -60,12 +82,14 @@ type rgbaWire struct {
 	A uint8 `json:"a"`
 }
 
-func (s RenderSettings) encode() ([]byte, error) {
-	wire := renderSettingsWire{
-		XScale: s.XScale,
-		YScale: s.YScale,
-		Width:  s.Width,
-		Height: s.Height,
+func (s PixmapSettings) encode() ([]byte, error) {
+	if s.Transform != nil && (s.Width == nil || s.Height == nil) {
+		return nil, errors.New("transform set without both width and height")
+	}
+	wire := pixmapSettingsWire{
+		Width:     s.Width,
+		Height:    s.Height,
+		Transform: s.Transform,
 	}
 	if s.BackgroundColor != nil {
 		wire.BgColor = &rgbaWire{

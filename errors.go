@@ -18,8 +18,8 @@ var (
 
 	// ErrRenderFailed is returned when Render fails for a reason other
 	// than an out-of-range page number — currently only a zero-area
-	// render (e.g. an explicit zero RenderSettings.Width/Height combined
-	// with a zero XScale/YScale).
+	// canvas (an explicit zero PixmapSettings.Width or Height, or a page
+	// under one point across).
 	ErrRenderFailed = errors.New("hayro: render failed")
 
 	// ErrClosed is returned by any Document method called after Close.

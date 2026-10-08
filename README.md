@@ -20,7 +20,11 @@ it can be independently built from the
 project.
 
 **Please note that API revisions are planned**; this should be considered Alpha
-software with no published versions.
+software with no published versions.  The hayro interface is also pre-1.0 and
+has undergone considerable change recently.
+
+This repository current bundles the WASM built from **hayro 0.8.0** and the
+interface reflects the interface shape from that release.
 
 
 ## Usage
@@ -40,7 +44,7 @@ defer doc.Close(ctx)
 
 fmt.Println(doc.Info().PageCount)
 
-img, err := doc.Render(ctx, 1, nil, nil) // *image.NRGBA, page 1, hayro's defaults
+img, err := doc.Render(ctx, 1, nil, nil, nil) // *image.NRGBA, page 1, hayro's defaults
 ```
 
 `Document.Info` (document title/author/etc, PDF version) and
@@ -61,25 +65,34 @@ page, err := doc.PageInfo(ctx, 1)
 fmt.Printf("page 1 is %vx%v points, rotated %d°\n", page.Width, page.Height, page.Rotation)
 ```
 
-Pass non-nil `*RenderSettings`/`*InterpreterSettings` to `Render` for
-anything other than `hayro`'s defaults — see their doc comments in
-`settings.go`. Every field in both types is a pointer; `nil` means "use the
-default for that field", so it's fine to only set the fields you care
-about:
+`Render` takes three optional groups of settings, in the same order as
+`hayro`'s own render functions: `*InterpreterSettings`, `*RenderSettings`
+and `*PixmapSettings` — see their doc comments in `settings.go`. Pass
+`nil` for any of them to use its defaults. Every field in all three types
+is a pointer; `nil` means "use the default for that field", so it's fine
+to only set the fields you care about.
+
+`PixmapSettings` describes the output canvas: its `Width`/`Height` in
+pixels, the background color, and a `Transform` (an `Affine`, see
+`affine.go`) that places the page on it. To render a page at twice its
+natural size:
 
 ```go
-width := uint16(800)
-height := uint16(600)
-img, err := doc.Render(ctx, 1, &hayro.RenderSettings{
-    Width:  &width,
-    Height: &height,
-}, nil)
+page, err := doc.PageInfo(ctx, 1)
+// ...
+width := uint16(page.Width * 2)
+height := uint16(page.Height * 2)
+scale := hayro.Scale(2, 2)
+img, err := doc.Render(ctx, 1, nil, nil, &hayro.PixmapSettings{
+    Width:     &width,
+    Height:    &height,
+    Transform: &scale,
+})
 ```
 
-In particular, `RenderSettings`'s `Width`/`Height` default to "auto"
-(derived from the page's own point size at the given scale) — pass `nil`
-for `render` entirely, as above, unless you actually need to force
-specific pixel dimensions of the canvas.
+`Width`/`Height` default to the page's own point size, at one pixel per
+point. Setting them without a `Transform` only resizes the canvas, not the
+page drawn on it; setting a `Transform` requires both.
 
 ## Example
 

@@ -89,13 +89,13 @@ func TestRenderExceedsMemoryBudget(t *testing.T) {
 	// A 4000x4000 RGBA output buffer alone is 64MiB
 	width := uint16(4000)
 	height := uint16(4000)
-	if _, err := doc.Render(ctx, 1, &RenderSettings{Width: &width, Height: &height}, nil); !errors.Is(err, ErrCrashed) {
+	if _, err := doc.Render(ctx, 1, nil, nil, &PixmapSettings{Width: &width, Height: &height}); !errors.Is(err, ErrCrashed) {
 		t.Fatalf("Render with an oversized output error = %v, want ErrCrashed", err)
 	}
 
 	// Later calls fail cleanly rather than running on a module instance in
 	// an unknown state.
-	if _, err := doc.Render(ctx, 1, nil, nil); !errors.Is(err, ErrCrashed) {
+	if _, err := doc.Render(ctx, 1, nil, nil, nil); !errors.Is(err, ErrCrashed) {
 		t.Errorf("Render after a crash error = %v, want ErrCrashed", err)
 	}
 	if _, err := doc.PageInfo(ctx, 1); !errors.Is(err, ErrCrashed) {
