@@ -32,11 +32,11 @@ func (w rectWire) toRect() Rect {
 
 // PageInfo is one page's geometry — see Document.PageInfo.
 type PageInfo struct {
-	// Width and Height are the page's render dimensions, in points: the
-	// pixel size Render would produce at XScale/YScale of 1.0 and no
-	// explicit Width/Height override. Already accounts for Rotation
-	// (swapped for a 90/270 degree rotation), unlike MediaBox/CropBox
-	// below.
+	// Width and Height are the page's size as displayed, in points.
+	// Already accounts for Rotation (swapped for a 90/270 degree
+	// rotation), unlike MediaBox/CropBox below. With nil PixmapSettings,
+	// Render produces an image of this size, one pixel per point
+	// (truncated to whole pixels).
 	Width, Height float32
 
 	// Rotation is the page's /Rotate entry, normalized to 0, 90, 180, or

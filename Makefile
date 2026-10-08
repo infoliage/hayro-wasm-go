@@ -15,6 +15,7 @@ tidy-check:
 update-wasm:
 	cd ../hayro-wasm-bridge && cargo build --target wasm32-unknown-unknown --release
 	cp ../hayro-wasm-bridge/target/wasm32-unknown-unknown/release/hayro_wasm_bridge.wasm wasm/hayro_wasm_bridge.wasm
+	@echo "REMINDER: update README to indicate the provenance of hayro_wasm_bridge.wasm"
 
 test:
 	go test $(GO_TEST_FLAGS) ./...

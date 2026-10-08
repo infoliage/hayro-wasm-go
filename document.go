@@ -169,10 +169,11 @@ func (d *Document) PageInfo(ctx context.Context, pageNumber uint) (PageInfo, err
 }
 
 // Render rasterizes one page (pageNumber is 1-based, in [1, PageCount])
-// to an RGBA image. render and interpreter each independently select a
-// hayro settings struct for this render — pass nil for either to use
-// hayro's defaults.
-func (d *Document) Render(ctx context.Context, pageNumber uint, render *RenderSettings, interpreter *InterpreterSettings) (*image.NRGBA, error) {
+// to an RGBA image. interpreter, render and pixmap each independently
+// select a group of settings for this render, in the same order as
+// hayro's own render functions take them — pass nil for any of them to
+// use that group's defaults.
+func (d *Document) Render(ctx context.Context, pageNumber uint, interpreter *InterpreterSettings, render *RenderSettings, pixmap *PixmapSettings) (*image.NRGBA, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -183,7 +184,22 @@ func (d *Document) Render(ctx context.Context, pageNumber uint, render *RenderSe
 		return nil, ErrPageOutOfRange
 	}
 
-	var renderPtr, renderLen, interpreterPtr, interpreterLen uint32
+	var interpreterPtr, interpreterLen, renderPtr, renderLen, pixmapPtr, pixmapLen uint32
+	if pixmap != nil {
+		blob, err := pixmap.encode()
+		if err != nil {
+			return nil, fmt.Errorf("hayro: encoding pixmap settings: %w", err)
+		}
+		ptr, err := d.allocPixmapSettings(ctx, uint32(len(blob)))
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = d.freePixmapSettings(ctx, ptr, uint32(len(blob))) }()
+		if !d.mod.Memory().Write(ptr, blob) {
+			return nil, fmt.Errorf("hayro: writing pixmap settings into wasm memory")
+		}
+		pixmapPtr, pixmapLen = ptr, uint32(len(blob))
+	}
 	if render != nil {
 		blob, err := render.encode()
 		if err != nil {
@@ -228,6 +244,7 @@ func (d *Document) Render(ctx context.Context, pageNumber uint, render *RenderSe
 	resultPtr, err := d.renderPage(ctx, d.pdfPtr, d.pdfLen, uint32(pageNumber),
 		interpreterPtr, interpreterLen,
 		renderPtr, renderLen,
+		pixmapPtr, pixmapLen,
 		widthPtr, heightPtr)
 
 	if err != nil {
@@ -237,7 +254,7 @@ func (d *Document) Render(ctx context.Context, pageNumber uint, render *RenderSe
 		// pageNumber was already validated above, and this package's own
 		// encode() always produces JSON matching hayro-wasm-bridge's
 		// schema, so the only failure mode left in practice is a
-		// zero-area render — but the wasm side treats malformed settings
+		// zero-area canvas — but the wasm side treats malformed settings
 		// JSON as the same null-pointer failure, so this covers that too
 		// (it would indicate a hayro-wasm-go bug, not a caller mistake).
 		return nil, ErrRenderFailed

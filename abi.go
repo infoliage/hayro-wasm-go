@@ -67,6 +67,14 @@ func (d *Document) freeRenderSettings(ctx context.Context, ptr, size uint32) err
 	return result_void(d.call(ctx, "free_render_settings", uint64(ptr), uint64(size)))
 }
 
+func (d *Document) allocPixmapSettings(ctx context.Context, size uint32) (uint32, error) {
+	return result_to_uint32(d.call(ctx, "alloc_pixmap_settings", uint64(size)))
+}
+
+func (d *Document) freePixmapSettings(ctx context.Context, ptr, size uint32) error {
+	return result_void(d.call(ctx, "free_pixmap_settings", uint64(ptr), uint64(size)))
+}
+
 func (d *Document) allocInterpreterSettings(ctx context.Context, size uint32) (uint32, error) {
 	return result_to_uint32(d.call(ctx, "alloc_interpreter_settings", uint64(size)))
 }
@@ -103,13 +111,14 @@ func (d *Document) freeDocumentInfo(ctx context.Context, ptr, length uint32) err
 	return result_void(d.call(ctx, "free_document_info", uint64(ptr), uint64(length)))
 }
 
-func (d *Document) renderPage(ctx context.Context, pdfPtr, pdfLen, pageNumber, interpSettingsPtr, interpSettingsLen, renderSettingsPtr, renderSettingsLen, heightPtr, widthPtr uint32) (uint32, error) {
+func (d *Document) renderPage(ctx context.Context, pdfPtr, pdfLen, pageNumber, interpSettingsPtr, interpSettingsLen, renderSettingsPtr, renderSettingsLen, pixmapSettingsPtr, pixmapSettingsLen, heightPtr, widthPtr uint32) (uint32, error) {
 	return result_to_uint32(
 		d.call(ctx, "render_page",
 			uint64(pdfPtr), uint64(pdfLen),
 			uint64(pageNumber),
 			uint64(interpSettingsPtr), uint64(interpSettingsLen),
 			uint64(renderSettingsPtr), uint64(renderSettingsLen),
+			uint64(pixmapSettingsPtr), uint64(pixmapSettingsLen),
 			uint64(heightPtr), uint64(widthPtr),
 		))
 }

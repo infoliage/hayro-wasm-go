@@ -43,9 +43,8 @@ func main() {
 
 	// flag.Visit only visits flags explicitly set, which matters here: an
 	// unset flag's zero-valued default (0) must not be confused with an
-	// explicit "0" — hayro-wasm-bridge's JSON wire format honors an
-	// explicit 0 literally (e.g. a 0 scale produces a zero-area, failing
-	// render) rather than treating it as "use hayro's default".
+	// explicit "0", which is honored literally (e.g. a 0 scale produces a
+	// zero-area canvas, and so a failing render).
 	set := map[string]bool{}
 	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
@@ -67,74 +66,88 @@ type sizeFlags struct {
 	widthSet, heightSet bool
 }
 
-// buildRenderSettings builds a *hayro.RenderSettings from whichever flags
+// buildPixmapSettings builds a *hayro.PixmapSettings from whichever flags
 // were actually passed, or nil if none were.
 //
-// size.width/size.height are handled three ways. In every case where
-// either is set, an explicit XScale/YScale is computed and set too:
-// hayro-wasm-bridge's Width/Height only resize the output canvas — the
-// actual rendered content is scaled by XScale/YScale alone (hayro's
-// render() builds its content transform from x_scale/y_scale only; an
-// explicit width/height with no accompanying scale just puts the
-// page's unscaled content in the corner of a differently-sized canvas).
+// Any size or scale flag turns into three settings that have to agree:
+// the canvas Width/Height in pixels, and a Transform that scales the
+// page's content to fill it. (Width/Height on their own only size the
+// canvas; the content would stay at one pixel per point in its corner.)
 //
-//   - neither set: no override — hayro's defaults apply throughout.
-//   - exactly one set: the given axis is hit exactly, XScale/YScale are
-//     both set to the scale that produces it, and the other pixel
-//     dimension is derived from natural's aspect ratio at that same scale
-//     (see aspectFill) — this is what makes "-width 800" alone produce a
+//   - -xscale/-yscale: the canvas is natural's size times the scale,
+//     truncated to whole pixels.
+//   - exactly one of -width/-height: the given axis is hit exactly, the
+//     content is scaled uniformly to match, and the other pixel dimension
+//     is derived from natural's aspect ratio at that same scale (see
+//     aspectFill) — this is what makes "-width 800" alone produce a
 //     proportionally scaled image instead of a stretched or unscaled one.
-//   - both set: XScale/YScale are set independently per axis (so the
-//     content actually stretches to fill an arbitrary WxH, rather than
-//     sitting unscaled in the corner of it), and Width/Height are set to
-//     the exact requested values.
-func buildRenderSettings(natural hayro.PageInfo, size sizeFlags, xScale, yScale float64, xScaleSet, yScaleSet bool, bgColor string, bgColorSet bool) (*hayro.RenderSettings, error) {
+//   - both -width and -height: the canvas is exactly the requested size,
+//     and the content is scaled independently per axis to fill it.
+func buildPixmapSettings(natural hayro.PageInfo, size sizeFlags, xScale, yScale float64, xScaleSet, yScaleSet bool, bgColor string, bgColorSet bool) (*hayro.PixmapSettings, error) {
 	if !size.widthSet && !size.heightSet && !xScaleSet && !yScaleSet && !bgColorSet {
 		return nil, nil
 	}
 
-	var render hayro.RenderSettings
-	switch {
-	case size.widthSet && size.heightSet:
-		if size.width > math.MaxUint16 {
-			return nil, fmt.Errorf("-width %d out of range (must fit in a uint16)", size.width)
+	var pixmap hayro.PixmapSettings
+	if size.widthSet || size.heightSet || xScaleSet || yScaleSet {
+		var width, height uint16
+		xs, ys := 1.0, 1.0
+		var err error
+		switch {
+		case size.widthSet && size.heightSet:
+			if size.width > math.MaxUint16 {
+				return nil, fmt.Errorf("-width %d out of range (must fit in a uint16)", size.width)
+			}
+			if size.height > math.MaxUint16 {
+				return nil, fmt.Errorf("-height %d out of range (must fit in a uint16)", size.height)
+			}
+			xs, ys, err = fillScale(natural, size.width, size.height)
+			if err != nil {
+				return nil, err
+			}
+			width, height = uint16(size.width), uint16(size.height)
+		case size.widthSet || size.heightSet:
+			width, height, xs, err = aspectFill(natural, size)
+			if err != nil {
+				return nil, err
+			}
+			ys = xs
+		default:
+			if xScaleSet {
+				xs = xScale
+			}
+			if yScaleSet {
+				ys = yScale
+			}
+			width, err = truncToUint16(float64(natural.Width) * xs)
+			if err != nil {
+				return nil, fmt.Errorf("width at -xscale %v: %w", xs, err)
+			}
+			height, err = truncToUint16(float64(natural.Height) * ys)
+			if err != nil {
+				return nil, fmt.Errorf("height at -yscale %v: %w", ys, err)
+			}
 		}
-		if size.height > math.MaxUint16 {
-			return nil, fmt.Errorf("-height %d out of range (must fit in a uint16)", size.height)
-		}
-		xs, ys, err := fillScale(natural, size.width, size.height)
-		if err != nil {
-			return nil, err
-		}
-		render.XScale, render.YScale = &xs, &ys
-		width := uint16(size.width)
-		height := uint16(size.height)
-		render.Width = &width
-		render.Height = &height
-	case size.widthSet || size.heightSet:
-		w, h, s, err := aspectFill(natural, size)
-		if err != nil {
-			return nil, err
-		}
-		render.Width, render.Height = &w, &h
-		render.XScale, render.YScale = &s, &s
-	}
-	if xScaleSet {
-		xscale32 := float32(xScale)
-		render.XScale = &xscale32
-	}
-	if yScaleSet {
-		yscale32 := float32(yScale)
-		render.YScale = &yscale32
+		transform := hayro.Scale(xs, ys)
+		pixmap.Width, pixmap.Height, pixmap.Transform = &width, &height, &transform
 	}
 	if bgColorSet {
 		c, err := parseHexColor(bgColor)
 		if err != nil {
 			return nil, fmt.Errorf("-bgcolor: %w", err)
 		}
-		render.BackgroundColor = &c
+		pixmap.BackgroundColor = &c
 	}
-	return &render, nil
+	return &pixmap, nil
+}
+
+// truncToUint16 truncates x to a whole number of pixels, the same way
+// hayro sizes its own canvas from a scale factor.
+func truncToUint16(x float64) (uint16, error) {
+	if !(x >= 0 && x <= math.MaxUint16) {
+		return 0, fmt.Errorf("%v out of range (must fit in a uint16)", x)
+	}
+	return uint16(x), nil
 }
 
 // fillScale computes the independent horizontal/vertical scale factors
@@ -142,11 +155,11 @@ func buildRenderSettings(natural hayro.PageInfo, size sizeFlags, xScale, yScale 
 // exactly width x height — used for the "-width and -height both given"
 // case, where the caller has explicitly accepted that the result may be
 // distorted if the ratio doesn't match natural's own.
-func fillScale(natural hayro.PageInfo, width, height uint) (xScale, yScale float32, err error) {
+func fillScale(natural hayro.PageInfo, width, height uint) (xScale, yScale float64, err error) {
 	if natural.Width <= 0 || natural.Height <= 0 {
 		return 0, 0, fmt.Errorf("page has a zero-area natural size (%vx%v)", natural.Width, natural.Height)
 	}
-	return float32(float64(width) / float64(natural.Width)), float32(float64(height) / float64(natural.Height)), nil
+	return float64(width) / float64(natural.Width), float64(height) / float64(natural.Height), nil
 }
 
 // aspectFill computes a uniform scale factor from whichever of
@@ -155,7 +168,7 @@ func fillScale(natural hayro.PageInfo, width, height uint) (xScale, yScale float
 // and the other derived from natural's aspect ratio (natural being the
 // page's own point-size dimensions, from Document.PageInfo) — so scaling
 // by one axis doesn't distort the image.
-func aspectFill(natural hayro.PageInfo, size sizeFlags) (width, height uint16, scale float32, err error) {
+func aspectFill(natural hayro.PageInfo, size sizeFlags) (width, height uint16, scale float64, err error) {
 	if natural.Width <= 0 || natural.Height <= 0 {
 		return 0, 0, 0, fmt.Errorf("page has a zero-area natural size (%vx%v)", natural.Width, natural.Height)
 	}
@@ -169,7 +182,7 @@ func aspectFill(natural hayro.PageInfo, size sizeFlags) (width, height uint16, s
 		if err != nil {
 			return 0, 0, 0, fmt.Errorf("height derived from -width %d: %w", size.width, err)
 		}
-		return uint16(size.width), derivedHeight, float32(s), nil
+		return uint16(size.width), derivedHeight, s, nil
 	}
 
 	if size.height > math.MaxUint16 {
@@ -180,7 +193,7 @@ func aspectFill(natural hayro.PageInfo, size sizeFlags) (width, height uint16, s
 	if err != nil {
 		return 0, 0, 0, fmt.Errorf("width derived from -height %d: %w", size.height, err)
 	}
-	return derivedWidth, uint16(size.height), float32(s), nil
+	return derivedWidth, uint16(size.height), s, nil
 }
 
 // roundToUint16 rounds x to the nearest integer and clamps it into
@@ -197,10 +210,10 @@ func roundToUint16(x float64) (uint16, error) {
 }
 
 // parseHexColor parses "#RRGGBB" or "#RRGGBBAA" into a color.NRGBA
-// (straight, non-premultiplied alpha, matching RenderSettings.
+// (straight, non-premultiplied alpha, matching PixmapSettings.
 // BackgroundColor's own type) — the same #RRGGBBAA form used throughout
 // this project's own docs, e.g. hayro-wasm-bridge's
-// schema/render-settings.schema.json documents hayro's own default as
+// schema/pixmap-settings.schema.json documents the default as
 // "#00000000". A 6-digit "#RRGGBB" is accepted too, as shorthand for
 // fully opaque (alpha = 0xff).
 func parseHexColor(s string) (color.NRGBA, error) {
@@ -246,26 +259,26 @@ func run(inPath, outPath string, page uint, size sizeFlags, xScale, yScale float
 	}
 
 	// Only fetch the page's natural size (an extra, if cheap, wasm call)
-	// when it's actually needed: computing the scale factor(s) that turn
-	// a requested pixel width/height into an actual content scale (see
-	// buildRenderSettings).
+	// when it's actually needed: working out the canvas size and content
+	// scale for a requested size or scale factor (see
+	// buildPixmapSettings).
 	var natural hayro.PageInfo
-	if size.widthSet || size.heightSet {
+	if size.widthSet || size.heightSet || xScaleSet || yScaleSet {
 		natural, err = doc.PageInfo(ctx, page)
 		if err != nil {
 			return fmt.Errorf("getting page %d info: %w", page, err)
 		}
 	}
 
-	render, err := buildRenderSettings(natural, size, xScale, yScale, xScaleSet, yScaleSet, bgColor, bgColorSet)
+	pixmap, err := buildPixmapSettings(natural, size, xScale, yScale, xScaleSet, yScaleSet, bgColor, bgColorSet)
 	if err != nil {
 		return err
 	}
 
-	// render is nil unless any of the flags above were passed, in which
-	// case hayro's defaults apply throughout: Width/Height default to
-	// "auto", derived from the page's own point size at 1x scale.
-	img, err := doc.Render(ctx, page, render, nil)
+	// pixmap is nil unless any of the flags above were passed, in which
+	// case the defaults apply throughout: a canvas of the page's own
+	// point size, at one pixel per point.
+	img, err := doc.Render(ctx, page, nil, nil, pixmap)
 	if err != nil {
 		return fmt.Errorf("rendering page %d: %w", page, err)
 	}

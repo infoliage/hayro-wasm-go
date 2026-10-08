@@ -8,6 +8,7 @@ package hayro_wasm_go
 import (
 	"context"
 	"errors"
+	"image"
 	"image/color"
 	"os"
 	"testing"
@@ -132,7 +133,7 @@ func TestRenderDefaults(t *testing.T) {
 	}
 	defer doc.Close(ctx)
 
-	img, err := doc.Render(ctx, 1, nil, nil)
+	img, err := doc.Render(ctx, 1, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -155,10 +156,10 @@ func TestRenderPageOutOfRange(t *testing.T) {
 	}
 	defer doc.Close(ctx)
 
-	if _, err := doc.Render(ctx, 0, nil, nil); !errors.Is(err, ErrPageOutOfRange) {
+	if _, err := doc.Render(ctx, 0, nil, nil, nil); !errors.Is(err, ErrPageOutOfRange) {
 		t.Errorf("Render(0) error = %v, want ErrPageOutOfRange", err)
 	}
-	if _, err := doc.Render(ctx, 2, nil, nil); !errors.Is(err, ErrPageOutOfRange) {
+	if _, err := doc.Render(ctx, 2, nil, nil, nil); !errors.Is(err, ErrPageOutOfRange) {
 		t.Errorf("Render(2) error = %v, want ErrPageOutOfRange", err)
 	}
 }
@@ -173,7 +174,7 @@ func TestRenderWithSettings(t *testing.T) {
 
 	width := uint16(100)
 	height := uint16(50)
-	img, err := doc.Render(ctx, 1, &RenderSettings{Width: &width, Height: &height}, nil)
+	img, err := doc.Render(ctx, 1, nil, nil, &PixmapSettings{Width: &width, Height: &height})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -182,11 +183,20 @@ func TestRenderWithSettings(t *testing.T) {
 	}
 }
 
-func TestRenderExplicitZeroScaleIsZeroAreaNotDefault(t *testing.T) {
-	// Confirms the semantic this whole JSON wire format exists for: an
-	// explicit 0 must not be reinterpreted as "use hayro's default", the
-	// way it was in an earlier byte-packed version of this wire format —
-	// see hayro-wasm-bridge's schema/render-settings.schema.json.
+// hasInkRightOf reports whether any pixel at or right of column minX is
+// not fully transparent.
+func hasInkRightOf(img *image.NRGBA, minX int) bool {
+	for y := img.Rect.Min.Y; y < img.Rect.Max.Y; y++ {
+		for x := minX; x < img.Rect.Max.X; x++ {
+			if img.NRGBAAt(x, y).A != 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func TestRenderTransformScalesContent(t *testing.T) {
 	ctx := context.Background()
 	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
@@ -194,11 +204,96 @@ func TestRenderExplicitZeroScaleIsZeroAreaNotDefault(t *testing.T) {
 	}
 	defer doc.Close(ctx)
 
-	xscale := float32(0)
-	yscale := float32(0)
-	_, err = doc.Render(ctx, 1, &RenderSettings{XScale: &xscale, YScale: &yscale}, nil)
+	// The text sits in the left 200pt of the page, so on a 400px-wide
+	// canvas it only reaches the right half when scaled up.
+	width := uint16(400)
+	height := uint16(200)
+	img, err := doc.Render(ctx, 1, nil, nil, &PixmapSettings{Width: &width, Height: &height})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if !hasInkRightOf(img, 0) {
+		t.Error("unscaled render is blank")
+	}
+	if hasInkRightOf(img, 200) {
+		t.Error("unscaled render has content in the right half of the canvas")
+	}
+
+	scale := Scale(2, 2)
+	img, err = doc.Render(ctx, 1, nil, nil, &PixmapSettings{Width: &width, Height: &height, Transform: &scale})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if img.Rect.Dx() != 400 || img.Rect.Dy() != 200 {
+		t.Fatalf("Render() size = %dx%d, want 400x200", img.Rect.Dx(), img.Rect.Dy())
+	}
+	if !hasInkRightOf(img, 200) {
+		t.Error("render scaled 2x has no content in the right half of the canvas")
+	}
+}
+
+func TestRenderTransformWithoutCanvasSizeIsAnError(t *testing.T) {
+	ctx := context.Background()
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer doc.Close(ctx)
+
+	scale := Scale(2, 2)
+	width := uint16(400)
+	for name, pixmap := range map[string]*PixmapSettings{
+		"neither":    {Transform: &scale},
+		"width only": {Transform: &scale, Width: &width},
+	} {
+		if _, err := doc.Render(ctx, 1, nil, nil, pixmap); err == nil {
+			t.Errorf("%s: Render() succeeded, want an error", name)
+		}
+	}
+
+	// The settings were rejected before reaching the wasm module, so the
+	// document is still usable.
+	if _, err := doc.Render(ctx, 1, nil, nil, nil); err != nil {
+		t.Errorf("Render after a rejected transform: %v", err)
+	}
+}
+
+func TestRenderZeroAreaCanvasFails(t *testing.T) {
+	ctx := context.Background()
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer doc.Close(ctx)
+
+	width := uint16(0)
+	_, err = doc.Render(ctx, 1, nil, nil, &PixmapSettings{Width: &width})
 	if !errors.Is(err, ErrRenderFailed) {
 		t.Fatalf("Render() error = %v, want ErrRenderFailed", err)
+	}
+}
+
+func TestRenderWithInterpreterAndRenderSettings(t *testing.T) {
+	// minimalPDF has neither annotations nor images, so this only checks
+	// that both blobs are encoded and accepted by the wasm module.
+	ctx := context.Background()
+	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer doc.Close(ctx)
+
+	for _, on := range []bool{true, false} {
+		img, err := doc.Render(ctx, 1,
+			&InterpreterSettings{RenderAnnotations: &on},
+			&RenderSettings{ForceImageInterpolation: &on},
+			nil)
+		if err != nil {
+			t.Fatalf("Render(%v): %v", on, err)
+		}
+		if img.Rect.Dx() != 200 || img.Rect.Dy() != 100 {
+			t.Fatalf("Render(%v) size = %dx%d, want 200x100", on, img.Rect.Dx(), img.Rect.Dy())
+		}
 	}
 }
 
@@ -211,7 +306,7 @@ func TestRenderBackgroundColorOverride(t *testing.T) {
 	defer doc.Close(ctx)
 
 	bg := color.NRGBA{R: 10, G: 20, B: 30, A: 255}
-	img, err := doc.Render(ctx, 1, &RenderSettings{BackgroundColor: &bg}, nil)
+	img, err := doc.Render(ctx, 1, nil, nil, &PixmapSettings{BackgroundColor: &bg})
 	if err != nil {
 		t.Fatalf("Render: %v", err)
 	}
@@ -235,7 +330,7 @@ func TestCloseIsIdempotent(t *testing.T) {
 	if err := doc.Close(ctx); err != nil {
 		t.Fatalf("second Close: %v", err)
 	}
-	if _, err := doc.Render(ctx, 1, nil, nil); !errors.Is(err, ErrClosed) {
+	if _, err := doc.Render(ctx, 1, nil, nil, nil); !errors.Is(err, ErrClosed) {
 		t.Errorf("Render() after Close error = %v, want ErrClosed", err)
 	}
 }
