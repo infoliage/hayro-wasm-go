@@ -15,9 +15,20 @@ import (
 // schema/render-settings.schema.json.
 type RenderSettings struct {
 	// ForceImageInterpolation: true draws every image with bilinear
-	// interpolation, whatever the PDF asks for. nil means "use hayro's
-	// default" (false).
+	// interpolation, whatever the PDF asks for. nil follows hayro's
+	// default (false).
 	ForceImageInterpolation *bool `json:"force_image_interpolation,omitempty"`
+	// AliasingThreshold: if set, anti-aliasing is disabled and a pixel is
+	// painted only when its coverage exceeds this value. nil follows
+	// hayro's default (unset, i.e. anti-aliasing on). While it's set,
+	// hayro doesn't use its glyph cache, whatever GlyphCaching says.
+	AliasingThreshold *uint8 `json:"aliasing_threshold,omitempty"`
+	// Hinting: Whether text should be hinted. nil follows hayro's default
+	// (true).
+	Hinting *bool `json:"hinting,omitempty"`
+	// GlyphCaching: Whether rasterized glyphs should be cached and reused.
+	// nil follows hayro's default (true).
+	GlyphCaching *bool `json:"glyph_caching,omitempty"`
 }
 
 func (s RenderSettings) encode() ([]byte, error) {
@@ -103,12 +114,13 @@ func (s PixmapSettings) encode() ([]byte, error) {
 }
 
 // InterpreterSettings mirrors the subset of
-// hayro_interpret::InterpreterSettings that hayro-wasm-bridge exposes. Its
-// font_resolver/cmap_resolver/warning_sink fields are Rust closures with
-// no JSON representation, so hayro-wasm-bridge can't expose them over this
-// ABI, and neither does this package — see hayro-wasm-bridge's README.
+// hayro_interpret::InterpreterSettings that hayro-wasm-bridge exposes.
 type InterpreterSettings struct {
-	// RenderAnnotations: nil means "use hayro's default".
+	// RenderPage: Sets render_content RenderContent::PAGE; nil follows
+	// hayro's default.
+	RenderPage *bool `json:"render_page,omitempty"`
+	// RenderAnnotations: Sets render_content RenderContent::ANNOTATIONS;
+	// nil follows hayro's default.
 	RenderAnnotations *bool `json:"render_annotations,omitempty"`
 }
 

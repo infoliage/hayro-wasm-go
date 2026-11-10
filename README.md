@@ -23,7 +23,7 @@ project.
 software with no published versions.  The hayro interface is also pre-1.0 and
 has undergone considerable change recently.
 
-This repository current bundles the WASM built from **hayro 0.8.0** and the
+This repository currently bundles the WASM built from **hayro 0.9.0** and the
 interface reflects the interface shape from that release.
 
 

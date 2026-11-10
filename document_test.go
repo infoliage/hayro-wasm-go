@@ -274,8 +274,10 @@ func TestRenderZeroAreaCanvasFails(t *testing.T) {
 }
 
 func TestRenderWithInterpreterAndRenderSettings(t *testing.T) {
-	// minimalPDF has neither annotations nor images, so this only checks
-	// that both blobs are encoded and accepted by the wasm module.
+	// This only checks that every field of both blobs is encoded and
+	// accepted by the wasm module (which rejects unknown fields and
+	// out-of-range values) — what each setting does to the pixels is
+	// covered by hayro-wasm-bridge's own tests.
 	ctx := context.Background()
 	doc, err := testEngine.OpenDocument(ctx, []byte(minimalPDF))
 	if err != nil {
@@ -284,13 +286,26 @@ func TestRenderWithInterpreterAndRenderSettings(t *testing.T) {
 	defer doc.Close(ctx)
 
 	for _, on := range []bool{true, false} {
+		// The full range of a uint8 is valid on the wire, so exercise
+		// both ends of it.
+		threshold := uint8(0)
+		if on {
+			threshold = 255
+		}
 		img, err := doc.Render(ctx, 1,
-			&InterpreterSettings{RenderAnnotations: &on},
-			&RenderSettings{ForceImageInterpolation: &on},
+			&InterpreterSettings{RenderPage: &on, RenderAnnotations: &on},
+			&RenderSettings{
+				ForceImageInterpolation: &on,
+				AliasingThreshold:       &threshold,
+				Hinting:                 &on,
+				GlyphCaching:            &on,
+			},
 			nil)
 		if err != nil {
 			t.Fatalf("Render(%v): %v", on, err)
 		}
+		// Turning off RenderPage and RenderAnnotations leaves a blank
+		// canvas, but still a full-size one.
 		if img.Rect.Dx() != 200 || img.Rect.Dy() != 100 {
 			t.Fatalf("Render(%v) size = %dx%d, want 200x100", on, img.Rect.Dx(), img.Rect.Dy())
 		}
